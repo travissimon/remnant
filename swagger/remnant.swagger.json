@@ -1,0 +1,304 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Provides obervability and logging for microservices, based upon Google's Dapper paper and Twitter's implementation, Zipkin\n",
+        "version": "1.0.0",
+        "title": "Remnant",
+        "contact": {
+            "name": "Travis Simon",
+            "email": "travis.simon@nicta.com.au"
+        },
+        "license": {
+            "name": "GPL 3.0",
+            "url": "http://www.gnu.org/licenses/gpl-3.0.en.html"
+        }
+    },
+    "host": "remnant",
+    "basePath": "/v1",
+    "schemes": [
+        "http"
+    ],
+    "paths": {
+        "/log": {
+            "post": {
+                "tags": [
+                    "logging"
+                ],
+                "summary": "Saves a log message and associates it with a service",
+                "description": "Annotates a Trace span with a log message",
+                "operationId": "logMessage",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "description": "Log message to save",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/LogMessage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "successful operation"
+                    },
+                    "400": {
+                        "description": "malformed log message"
+                    }
+                }
+            }
+        },
+        "/client/start": {
+            "post": {
+                "tags": [
+                    "observability"
+                ],
+                "summary": "Creates a new span within a trace",
+                "description": "Called at the start of the function implementing a service call, this service will create a new child span within a trace. If this is a new trace, it is important to ensure that the traceId and spanId parameters are the same",
+                "operationId": "clientStart",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "description": "Request information",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ClientStart"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "successful operation"
+                    },
+                    "400": {
+                        "description": "malformed client start"
+                    }
+                }
+            }
+        },
+        "/client/end": {
+            "post": {
+                "tags": [
+                    "observability"
+                ],
+                "summary": "Completes a span's definition",
+                "description": "Called at the end of the function implementing a service call, this call marks the  timestamp when a service has completed its processing.",
+                "operationId": "clientEnd",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "description": "Span information",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SpanReference"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "successful operation"
+                    },
+                    "400": {
+                        "description": "malformed client end"
+                    }
+                }
+            }
+        },
+        "/remote-call/start": {
+            "post": {
+                "tags": [
+                    "observability"
+                ],
+                "summary": "Marks start of a call to a remote service",
+                "description": "Called before a service makes a child call to another service. Note that the parent service id should be set to the id of the current span to properly setup the parent <--> child relationship.",
+                "operationId": "remoteStart",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "description": "new span reference",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SpanReference"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "successful operation"
+                    },
+                    "400": {
+                        "description": "malformed client end"
+                    }
+                }
+            }
+        },
+        "/remote-call/end": {
+            "post": {
+                "tags": [
+                    "observability"
+                ],
+                "summary": "Marks end of call to remote service",
+                "description": "Called before a service makes a child call to another service. Note that the parent service id should be set to the id of the current span to properly setup the parent <--> child relationship.",
+                "operationId": "remoteStart",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "description": "new span reference",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/SpanReference"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "successful operation"
+                    },
+                    "400": {
+                        "description": "malformed client end"
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "tags": [
+                    "monitoring"
+                ],
+                "summary": "Heartbeat response",
+                "description": "Provides a monitoring service with proof-of-life",
+                "operationId": "isAlive",
+                "responses": {
+                    "default": {
+                        "description": "successful operation"
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "LogMessage": {
+            "type": "object",
+            "properties": {
+                "traceId": {
+                    "type": "string"
+                },
+                "spanId": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "stackTrace": {
+                    "type": "string"
+                }
+            }
+        },
+        "HttpHeaderValue": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "ClientStart": {
+            "type": "object",
+            "properties": {
+                "traceId": {
+                    "type": "string"
+                },
+                "spanId": {
+                    "type": "string"
+                },
+                "parentSpanId": {
+                    "type": "string"
+                },
+                "ipAddress": {
+                    "type": "string"
+                },
+                "requestUrl": {
+                    "type": "string"
+                },
+                "requestParameters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/HttpHeaderValue"
+                    }
+                }
+            }
+        },
+        "SpanReference": {
+            "type": "object",
+            "properties": {
+                "traceId": {
+                    "type": "string"
+                },
+                "spanId": {
+                    "type": "string"
+                },
+                "parentSpanId": {
+                    "type": "string"
+                }
+            }
+        },
+        "RemoteEnd": {
+            "type": "object",
+            "properties": {
+                "traceId": {
+                    "type": "string"
+                },
+                "spanId": {
+                    "type": "string"
+                },
+                "parentSpanId": {
+                    "type": "string"
+                },
+                "httpResponseCode": {
+                    "type": "integer",
+                    "format": "int32"
+                }
+            }
+        }
+    }
+}
