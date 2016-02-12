@@ -13,13 +13,12 @@
             "url": "http://www.gnu.org/licenses/gpl-3.0.en.html"
         }
     },
-    "host": "remnant",
-    "basePath": "/v1",
+    "host": "localhost:8080",
     "schemes": [
         "http"
     ],
     "paths": {
-        "/log": {
+        "/v1/log": {
             "post": {
                 "tags": [
                     "logging"
@@ -54,14 +53,14 @@
                 }
             }
         },
-        "/client/start": {
+        "/v1/client-span": {
             "post": {
                 "tags": [
                     "observability"
                 ],
-                "summary": "Creates a new span within a trace",
-                "description": "Called at the start of the function implementing a service call, this service will create a new child span within a trace. If this is a new trace, it is important to ensure that the traceId and spanId parameters are the same",
-                "operationId": "clientStart",
+                "summary": "Creates a span for the life of the current service",
+                "description": "Creates a span for the life of a service request",
+                "operationId": "createClientSpan",
                 "consumes": [
                     "application/json"
                 ],
@@ -72,10 +71,10 @@
                     {
                         "in": "body",
                         "name": "body",
-                        "description": "Request information",
+                        "description": "Client span",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/ClientStart"
+                            "$ref": "#/definitions/ClientSpan"
                         }
                     }
                 ],
@@ -84,19 +83,19 @@
                         "description": "successful operation"
                     },
                     "400": {
-                        "description": "malformed client start"
+                        "description": "malformed client span"
                     }
                 }
             }
         },
-        "/client/end": {
+        "/v1/remote-span": {
             "post": {
                 "tags": [
                     "observability"
                 ],
                 "summary": "Completes a span's definition",
-                "description": "Called at the end of the function implementing a service call, this call marks the  timestamp when a service has completed its processing.",
-                "operationId": "clientEnd",
+                "description": "Saves a span documenting the time taken to make a remote service call",
+                "operationId": "createRemoteSpan",
                 "consumes": [
                     "application/json"
                 ],
@@ -107,80 +106,10 @@
                     {
                         "in": "body",
                         "name": "body",
-                        "description": "Span information",
+                        "description": "Remote Span information",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/SpanReference"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "successful operation"
-                    },
-                    "400": {
-                        "description": "malformed client end"
-                    }
-                }
-            }
-        },
-        "/remote-call/start": {
-            "post": {
-                "tags": [
-                    "observability"
-                ],
-                "summary": "Marks start of a call to a remote service",
-                "description": "Called before a service makes a child call to another service. Note that the parent service id should be set to the id of the current span to properly setup the parent <--> child relationship.",
-                "operationId": "remoteStart",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "parameters": [
-                    {
-                        "in": "body",
-                        "name": "body",
-                        "description": "new span reference",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/SpanReference"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "successful operation"
-                    },
-                    "400": {
-                        "description": "malformed client end"
-                    }
-                }
-            }
-        },
-        "/remote-call/end": {
-            "post": {
-                "tags": [
-                    "observability"
-                ],
-                "summary": "Marks end of call to remote service",
-                "description": "Called before a service makes a child call to another service. Note that the parent service id should be set to the id of the current span to properly setup the parent <--> child relationship.",
-                "operationId": "remoteStart",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "parameters": [
-                    {
-                        "in": "body",
-                        "name": "body",
-                        "description": "new span reference",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/SpanReference"
+                            "$ref": "#/definitions/RemoteSpan"
                         }
                     }
                 ],
@@ -231,7 +160,7 @@
                 }
             }
         },
-        "HttpHeaderValue": {
+        "KeyValuePair": {
             "type": "object",
             "properties": {
                 "key": {
@@ -242,7 +171,7 @@
                 }
             }
         },
-        "ClientStart": {
+        "ClientSpan": {
             "type": "object",
             "properties": {
                 "traceId": {
@@ -254,13 +183,31 @@
                 "parentSpanId": {
                     "type": "string"
                 },
-                "ipAddress": {
+                "startTimestamp": {
                     "type": "string"
                 },
-                "requestUrl": {
+                "endTimestamp": {
                     "type": "string"
                 },
-                "requestParameters": {
+                "host": {
+                    "type": "string"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+				"body": {
+                    "type": "string"
+				},
+                "headers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/HttpHeaderValue"
+                    }
+                },
+                "parameters": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/HttpHeaderValue"
@@ -268,21 +215,7 @@
                 }
             }
         },
-        "SpanReference": {
-            "type": "object",
-            "properties": {
-                "traceId": {
-                    "type": "string"
-                },
-                "spanId": {
-                    "type": "string"
-                },
-                "parentSpanId": {
-                    "type": "string"
-                }
-            }
-        },
-        "RemoteEnd": {
+        "RemoteSpan": {
             "type": "object",
             "properties": {
                 "traceId": {
@@ -294,7 +227,13 @@
                 "parentSpanId": {
                     "type": "string"
                 },
-                "httpResponseCode": {
+                "startTimestamp": {
+                    "type": "string"
+                },
+                "endTimestamp": {
+                    "type": "string"
+                },
+                "responseCode": {
                     "type": "integer",
                     "format": "int32"
                 }
