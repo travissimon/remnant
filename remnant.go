@@ -1,64 +1,28 @@
-package remnant
+package main
 
 import (
 	"database/sql"
 	"encoding/json"
+	"flag"
 	"fmt"
-	_ "github.com/lib/pq"
 	"log"
 	"net/http"
 	"time"
+
+	_ "github.com/lib/pq"
+	"github.com/travissimon/remnant/client"
 )
 
-// timestamps should be formatted according to rfc3339:
-// http://tools.ietf.org/html/rfc3339
-// e.g. 2006-01-02T15:04:05Z07:00
-
-type KeyValue struct {
-	Key   string `json:key`
-	Value string `json:value`
-}
-
-type LogMessage struct {
-	TraceId    string `json:traceId`
-	SpanId     string `json:spanId`
-	Severity   string `json:severity`
-	Message    string `json:message`
-	StackTrace string `json:stackTrace`
-}
-
-type LocalSpan struct {
-	TraceId    string     `json:traceId`
-	Id         string     `json:spanId`
-	ParentId   string     `json:parentSpanId`
-	Start      string     `json:startTimestamp`
-	End        string     `json:endTimestamp`
-	Host       string     `json:host`
-	Method     string     `json:method`
-	Url        string     `json:rurl`
-	Headers    []KeyValue `json:headers`
-	Parameters []KeyValue `json:parameters`
-	Body       string     `json:body`
-}
-
-type RemoteSpan struct {
-	TraceId      string `json:traceId`
-	Id           string `json:spanId`
-	ParentId     string `json:parentSpanId`
-	Start        string `json:startTimestamp`
-	End          string `json:endTimestamp`
-	ResponseCode int    `json:responseCode`
-}
-
 func swaggerIndexHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Remnant Index Handler %s\n", time.Now().Local())
+	fmt.Printf("%s Remnant Index Handler\n", time.Now().Local())
+	fmt.Printf("Request url: %s\n", r.URL)
 	http.ServeFile(w, r, "swagger/remnant.swagger.json")
 }
 
 func logHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Remnant Log handler: %s", time.Now().UTC().Format(time.RFC3339))
+	fmt.Printf("%s Remnant Log handler", time.Now().UTC().Format(time.RFC3339))
 	// decode log message
-	var logMsg LogMessage
+	var logMsg client.LogMessage
 	err := json.NewDecoder(r.Body).Decode(&logMsg)
 	if err != nil {
 		w.WriteHeader(400)
@@ -72,9 +36,9 @@ func logHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func clientSpanHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Remnant Client span: %s", time.Now().UTC().Format(time.RFC3339))
+	fmt.Printf("%s Remnant Client span\n", time.Now().UTC().Format(time.RFC3339))
 	// decode log message
-	var localSpan LocalSpan
+	var localSpan client.LocalSpan
 	err := json.NewDecoder(r.Body).Decode(&localSpan)
 	if err != nil {
 		w.WriteHeader(400)
@@ -83,14 +47,14 @@ func clientSpanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Do something with it?
-	fmt.Printf("Message: %s\n", localSpan)
-	fmt.Fprintf(w, "Message: %s\n", localSpan)
+	fmt.Printf("cl span: %s\n", localSpan)
+	fmt.Fprintf(w, "cl span: %s\n", localSpan)
 }
 
 func remoteSpanHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Remnant Remote span: %s", time.Now().UTC().Format(time.RFC3339))
+	fmt.Printf("%s Remnant Remote span\n", time.Now().UTC().Format(time.RFC3339))
 	// decode log message
-	var remoteSpan RemoteSpan
+	var remoteSpan client.RemoteSpan
 	err := json.NewDecoder(r.Body).Decode(&remoteSpan)
 	if err != nil {
 		w.WriteHeader(400)
@@ -99,12 +63,12 @@ func remoteSpanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Do something with it?
-	fmt.Printf("Message: %s\n", remoteSpan)
-	fmt.Fprintf(w, "Message: %s\n", remoteSpan)
+	fmt.Printf("rm span: %s\n", remoteSpan)
+	fmt.Fprintf(w, "rm span: %s\n", remoteSpan)
 }
 
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("Remnant healthz %s\n", time.Now().Local())
+	fmt.Printf("%s Remnant healthz\n", time.Now().Local())
 	fmt.Fprintf(w, "OK")
 }
 
@@ -123,6 +87,9 @@ func initServer() error {
 }
 
 func main() {
+	var port = flag.String("port", "7777", "Define what TCP port to bind to")
+	flag.Parse()
+
 	err := initServer()
 	if err != nil {
 		log.Fatal("Error initialising server")
@@ -133,8 +100,7 @@ func main() {
 	http.HandleFunc("/v1/client-span", clientSpanHandler)
 	http.HandleFunc("/v1/remote-span", remoteSpanHandler)
 	http.HandleFunc("/healthz", healthzHandler)
-	http.HandleFunc("/", swaggerIndexHandler)
 
-	fmt.Printf("Starting combined mode Remnant server on port 8080\n")
-	http.ListenAndServe(":8080", nil)
+	fmt.Printf("Starting combined mode Remnant server on port %s\n", *port)
+	http.ListenAndServe(":"+*port, nil)
 }
