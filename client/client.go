@@ -60,6 +60,28 @@ const (
 	parentSpanId        = "remnant-parent-span-id"
 )
 
+type Logger interface {
+	LogDebug(msg string)
+	LogInfo(msg string)
+	LogWarning(msg string)
+	LogError(msg string)
+	LogException(msg, exception string)
+}
+
+type RemnantHandlerFunc func(http.ResponseWriter, *http.Request, Logger)
+
+func GetInstrumentedHandler(remnantUrl string, f RemnantHandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cl, err := NewRemnantClient(remnantUrl, r)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s Could not create Remnant client: ", err.Error())
+		} else {
+			cl.EndSpan()
+		}
+		f(w, r, cl)
+	}
+}
+
 type RemnantClient struct {
 	remnantUrl string
 	span       *LocalSpan
@@ -182,8 +204,8 @@ func (rc *RemnantClient) LogWarning(msg string) {
 func (rc *RemnantClient) LogError(msg string) {
 	rc.log(msg, "", "error")
 }
-func (rc *RemnantClient) LogException(msg string) {
-	rc.log(msg, "", "exception")
+func (rc *RemnantClient) LogException(msg, stackTrace string) {
+	rc.log(msg, stackTrace, "exception")
 }
 
 func (rc *RemnantClient) log(msg, stackTrace, level string) {
