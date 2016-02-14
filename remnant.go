@@ -1,28 +1,25 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
-	"time"
+	"os"
+	"sync"
 
 	_ "github.com/lib/pq"
-	"github.com/travissimon/remnant/client"
+	"github.com/travissimon/remnant/data"
+	"github.com/travissimon/remnant/types"
 )
 
 func swaggerIndexHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("%s Remnant Index Handler\n", time.Now().Local())
-	fmt.Printf("Request url: %s\n", r.URL)
 	http.ServeFile(w, r, "swagger/remnant.swagger.json")
 }
 
 func logHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("%s Remnant Log handler", time.Now().UTC().Format(time.RFC3339))
 	// decode log message
-	var logMsg client.LogMessage
+	var logMsg types.LogMessage
 	err := json.NewDecoder(r.Body).Decode(&logMsg)
 	if err != nil {
 		w.WriteHeader(400)
@@ -30,77 +27,134 @@ func logHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Do something with it?
-	fmt.Printf("Message: %s\n", logMsg)
-	fmt.Fprintf(w, "Message: %s\n", logMsg)
+	data.InsertLog(logMsg)
 }
 
-func clientSpanHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("%s Remnant Client span\n", time.Now().UTC().Format(time.RFC3339))
+func spanHandler(w http.ResponseWriter, r *http.Request) {
 	// decode log message
-	var localSpan client.LocalSpan
-	err := json.NewDecoder(r.Body).Decode(&localSpan)
+	var span types.Span
+	err := json.NewDecoder(r.Body).Decode(&span)
 	if err != nil {
 		w.WriteHeader(400)
 		w.Write([]byte(err.Error()))
 		return
 	}
 
-	// Do something with it?
-	fmt.Printf("cl span: %s\n", localSpan)
-	fmt.Fprintf(w, "cl span: %s\n", localSpan)
+	if span.TraceId == span.Id {
+		// Initiating span
+		data.InsertSpan(span)
+	} else {
+		mergeSpan(span)
+	}
 }
 
-func remoteSpanHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("%s Remnant Remote span\n", time.Now().UTC().Format(time.RFC3339))
-	// decode log message
-	var remoteSpan client.RemoteSpan
-	err := json.NewDecoder(r.Body).Decode(&remoteSpan)
+var spanCache map[string]types.Span
+var spanMutex = &sync.Mutex{}
+
+func prettyPrint(obj interface{}) string {
+	json, err := json.MarshalIndent(obj, "", "\t")
 	if err != nil {
-		w.WriteHeader(400)
-		w.Write([]byte(err.Error()))
+		fmt.Fprintf(os.Stderr, "Error marshalling json: %s\n", err.Error())
+	}
+	return string(json)
+}
+
+func writeMismatch(fieldName, existing, new string) {
+	fmt.Fprintf(os.Stderr, "Span merge, mismatched field: %s\n", fieldName)
+	fmt.Fprintf(os.Stderr, "existing: %s\n", existing)
+	fmt.Fprintf(os.Stderr, "new: %s\n", new)
+}
+
+func mergeSpan(span types.Span) {
+	spanMutex.Lock()
+	sp, exists := spanCache[span.Id]
+	if !exists {
+		// either client or remote half of this span is missing -
+		// cache it until we get all the details
+		spanCache[span.Id] = span
+		spanMutex.Unlock()
 		return
 	}
 
-	// Do something with it?
-	fmt.Printf("rm span: %s\n", remoteSpan)
-	fmt.Fprintf(w, "rm span: %s\n", remoteSpan)
+	spanMutex.Unlock()
+
+	// remove span from cache
+	delete(spanCache, span.Id)
+
+	// copy across missing values
+	if sp.TraceId == "" {
+		sp.TraceId = span.TraceId
+	} else if sp.TraceId != span.TraceId {
+		writeMismatch("TraceId", sp.TraceId, span.TraceId)
+	}
+	if sp.ParentId == "" {
+		sp.ParentId = span.ParentId
+	} else if span.ParentId != "" && sp.ParentId != span.ParentId {
+		writeMismatch("ParentId", sp.ParentId, span.ParentId)
+	}
+	if sp.ClientStart == "" {
+		sp.ClientStart = span.ClientStart
+	}
+	if sp.ClientEnd == "" {
+		sp.ClientEnd = span.ClientEnd
+	}
+	if sp.RemoteStart == "" {
+		sp.RemoteStart = span.RemoteStart
+	}
+	if sp.RemoteEnd == "" {
+		sp.RemoteEnd = span.RemoteEnd
+	}
+	if sp.Host == "" {
+		sp.Host = span.Host
+	} else if span.Host != "" && sp.Host != span.Host {
+		writeMismatch("Host", sp.Host, span.Host)
+	}
+	if sp.Method == "" {
+		sp.Method = span.Method
+	} else if span.Method != "" && sp.Method != span.Method {
+		writeMismatch("Method", sp.Method, span.Method)
+	}
+	if sp.Url == "" {
+		sp.Url = span.Url
+	} else if span.Url != "" && sp.Url != span.Url {
+		writeMismatch("Url", sp.Url, span.Url)
+	}
+	if sp.Headers == nil || len(sp.Headers) == 0 {
+		sp.Headers = span.Headers
+	}
+	if sp.Parameters == nil || len(sp.Parameters) == 0 {
+		sp.Parameters = span.Parameters
+	}
+	if sp.Body == "" {
+		sp.Body = span.Body
+	} else if span.Body != "" && sp.Body != span.Body {
+		writeMismatch("Body", sp.Body, span.Body)
+	}
+	if sp.ResponseCode == 0 {
+		sp.ResponseCode = span.ResponseCode
+	} else if span.ResponseCode != 0 && sp.ResponseCode != span.ResponseCode {
+		writeMismatch("ResponseCode", string(sp.ResponseCode), string(span.ResponseCode))
+	}
+
+	data.InsertSpan(sp)
 }
 
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("%s Remnant healthz\n", time.Now().Local())
 	fmt.Fprintf(w, "OK")
-}
-
-var db *sql.DB
-
-func initServer() error {
-	database, err := sql.Open("postgres", "host=localhost dbname=tsimon sslmode=disable")
-	if err != nil {
-		log.Fatal("Error connecting to database\n")
-		return err
-	}
-
-	db = database
-
-	return nil
 }
 
 func main() {
 	var port = flag.String("port", "7777", "Define what TCP port to bind to")
 	flag.Parse()
 
-	err := initServer()
-	if err != nil {
-		log.Fatal("Error initialising server")
-		return
-	}
+	spanCache = make(map[string]types.Span)
+
 	http.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("swagger"))))
 	http.HandleFunc("/v1/log", logHandler)
-	http.HandleFunc("/v1/client-span", clientSpanHandler)
-	http.HandleFunc("/v1/remote-span", remoteSpanHandler)
+	http.HandleFunc("/v1/client-span", spanHandler)
+	http.HandleFunc("/v1/remote-span", spanHandler)
 	http.HandleFunc("/healthz", healthzHandler)
 
-	fmt.Printf("Starting combined mode Remnant server on port %s\n", *port)
+	fmt.Printf("Starting Remnant server on port %s\n", *port)
 	http.ListenAndServe(":"+*port, nil)
 }

@@ -1,0 +1,50 @@
+-- Table: spans
+
+-- DROP TABLE spans;
+
+CREATE TABLE spans
+(
+  trace_id text NOT NULL,
+  span_id text NOT NULL,
+  parent_span_id text NOT NULL,
+  client_start timestamp without time zone,
+  client_end timestamp without time zone,
+  remote_start timestamp without time zone,
+  remote_end timestamp without time zone,
+  host text,
+  method text,
+  url text,
+  headers text,
+  parameters text,
+  body text,
+  response_code smallint,
+  CONSTRAINT spans_pkey PRIMARY KEY (span_id)
+)
+WITH (
+  OIDS=FALSE
+);
+ALTER TABLE spans
+  OWNER TO tsimon;
+
+
+
+
+-- Table: logs
+
+-- DROP TABLE logs;
+
+CREATE TABLE logs
+(
+  log_id bigserial NOT NULL,
+  trace_id text NOT NULL,
+  span_id text NOT NULL,
+  severity text,
+  message text,
+  stack_trace text,
+  CONSTRAINT logs_pkey PRIMARY KEY (log_id)
+)
+WITH (
+  OIDS=FALSE
+);
+ALTER TABLE logs
+  OWNER TO tsimon;
