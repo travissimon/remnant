@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	_ "github.com/lib/pq"
-	"github.com/travissimon/remnant/data"
+	data "github.com/travissimon/remnant/dummydata"
 	"github.com/travissimon/remnant/types"
 )
 
@@ -50,14 +51,6 @@ func spanHandler(w http.ResponseWriter, r *http.Request) {
 
 var spanCache map[string]types.Span
 var spanMutex = &sync.Mutex{}
-
-func prettyPrint(obj interface{}) string {
-	json, err := json.MarshalIndent(obj, "", "\t")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshalling json: %s\n", err.Error())
-	}
-	return string(json)
-}
 
 func writeMismatch(fieldName, existing, new string) {
 	fmt.Fprintf(os.Stderr, "Span merge, mismatched field: %s\n", fieldName)
@@ -141,6 +134,36 @@ func mergeSpan(span types.Span) {
 
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "OK")
+}
+
+func purgeCache() {
+	sleepTime := 1 * time.Second
+	for {
+		expireTime := time.Now().UTC().Add(-5 * time.Second)
+		// remove old entries
+		for _, span := range spanCache {
+			var timeStr = span.ClientStart
+
+			if timeStr == "" {
+				timeStr = span.RemoteStart
+			}
+
+			t, err := time.Parse(time.RFC3339Nano, timeStr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error parsing cached span's start time: %s\n", err.Error())
+			} else {
+				if t.Before(expireTime) {
+					spanMutex.Lock()
+					delete(spanCache, span.Id)
+					spanMutex.Unlock()
+
+					data.InsertSpan(span)
+				}
+			}
+		}
+
+		time.Sleep(sleepTime)
+	}
 }
 
 func main() {
